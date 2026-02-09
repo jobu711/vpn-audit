@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VPN Privacy Audit Suite</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header class="top-bar">
+    <div class="logo">
+      <svg class="logo-icon" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+      </svg>
+      <h1>VPN Privacy Audit</h1>
+    </div>
+    <div class="connection-badge" id="connectionBadge">
+      <span class="badge-dot"></span>
+      <span class="badge-text">Connecting...</span>
+    </div>
+  </header>
+
+  <main class="dashboard">
+    <!-- Left Panel: Live Monitoring -->
+    <section class="panel panel-monitor">
+      <div class="panel-header">
+        <h2>Live Connection Monitor</h2>
+        <span class="ws-indicator" id="wsIndicator" title="WebSocket status"></span>
+      </div>
+
+      <!-- Latency & Bandwidth Gauges -->
+      <div class="gauges">
+        <div class="gauge-card">
+          <div class="gauge-label">Latency</div>
+          <div class="gauge-ring" id="latencyGauge">
+            <svg viewBox="0 0 120 120">
+              <circle class="gauge-bg" cx="60" cy="60" r="50"/>
+              <circle class="gauge-fill" id="latencyFill" cx="60" cy="60" r="50"/>
+            </svg>
+            <div class="gauge-value" id="latencyValue">--</div>
+            <div class="gauge-unit">ms</div>
+          </div>
+        </div>
+        <div class="gauge-card">
+          <div class="gauge-label">Bandwidth</div>
+          <div class="gauge-ring" id="bandwidthGauge">
+            <svg viewBox="0 0 120 120">
+              <circle class="gauge-bg" cx="60" cy="60" r="50"/>
+              <circle class="gauge-fill" id="bandwidthFill" cx="60" cy="60" r="50"/>
+            </svg>
+            <div class="gauge-value" id="bandwidthValue">--</div>
+            <div class="gauge-unit">Mbps</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Network Interfaces -->
+      <div class="monitor-section">
+        <h3>Network Interfaces</h3>
+        <div class="interface-list" id="interfaceList">
+          <div class="placeholder-text">Waiting for data...</div>
+        </div>
+      </div>
+
+      <!-- Routing Table -->
+      <div class="monitor-section">
+        <h3>Routing Table</h3>
+        <div class="route-list" id="routeList">
+          <div class="placeholder-text">Waiting for data...</div>
+        </div>
+      </div>
+
+      <!-- Event Log -->
+      <div class="monitor-section">
+        <h3>Event Log</h3>
+        <div class="event-log" id="eventLog">
+          <div class="placeholder-text">No events yet.</div>
+        </div>
+      </div>
+
+      <div class="last-update">
+        Last update: <span id="lastUpdate">--</span>
+      </div>
+    </section>
+
+    <!-- Right Panel: Audit Controls -->
+    <section class="panel panel-audit">
+      <div class="panel-header">
+        <h2>Audit Controls</h2>
+        <button class="btn btn-sm btn-outline" id="btnFetchResults" title="Fetch latest stored results">
+          Refresh Results
+        </button>
+      </div>
+
+      <div class="audit-grid">
+        <!-- Leak Detection Card -->
+        <div class="audit-card" data-test="leaks">
+          <div class="card-header">
+            <div class="card-icon card-icon-leaks">
+              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/>
+              </svg>
+            </div>
+            <div>
+              <h3>Leak Detection</h3>
+              <p class="card-desc">DNS, WebRTC &amp; IPv6 leak checks</p>
+            </div>
+          </div>
+          <div class="card-result" id="result-leaks">
+            <div class="result-placeholder">No results yet</div>
+          </div>
+          <button class="btn btn-primary btn-run" data-endpoint="/api/audit/leaks" data-target="leaks">
+            <span class="btn-label">Run Test</span>
+            <span class="btn-spinner"></span>
+          </button>
+        </div>
+
+        <!-- Traffic Fingerprinting Card -->
+        <div class="audit-card" data-test="fingerprint">
+          <div class="card-header">
+            <div class="card-icon card-icon-fingerprint">
+              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M2 12C2 6.5 6.5 2 12 2a10 10 0 0 1 8 4"/>
+                <path d="M5 19.5C5.5 18 6 15 6 12c0-3.5 2.5-6 6-6"/>
+                <path d="M12 12c0 4-1 8-4 11"/>
+                <path d="M18 12a6 6 0 0 0-6-6"/>
+                <path d="M12 12c0 2.5-.5 5-2 7.5"/>
+                <path d="M22 12c0 5.5-4.5 10-10 10"/>
+              </svg>
+            </div>
+            <div>
+              <h3>Traffic Fingerprinting</h3>
+              <p class="card-desc">Analyze traffic patterns for VPN detection</p>
+            </div>
+          </div>
+          <div class="card-result" id="result-fingerprint">
+            <div class="result-placeholder">No results yet</div>
+          </div>
+          <button class="btn btn-primary btn-run" data-endpoint="/api/audit/fingerprint" data-target="fingerprint">
+            <span class="btn-label">Run Test</span>
+            <span class="btn-spinner"></span>
+          </button>
+        </div>
+
+        <!-- Kill Switch Card -->
+        <div class="audit-card" data-test="killswitch">
+          <div class="card-header">
+            <div class="card-icon card-icon-killswitch">
+              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18.36 6.64a9 9 0 1 1-12.73 0"/>
+                <line x1="12" y1="2" x2="12" y2="12"/>
+              </svg>
+            </div>
+            <div>
+              <h3>Kill Switch Test</h3>
+              <p class="card-desc">Verify leak protection on disconnect</p>
+            </div>
+          </div>
+          <div class="card-result" id="result-killswitch">
+            <div class="result-placeholder">No results yet</div>
+          </div>
+          <button class="btn btn-primary btn-run" data-endpoint="/api/audit/killswitch" data-target="killswitch">
+            <span class="btn-label">Run Test</span>
+            <span class="btn-spinner"></span>
+          </button>
+        </div>
+
+        <!-- Full Audit Card -->
+        <div class="audit-card audit-card-full" data-test="full">
+          <div class="card-header">
+            <div class="card-icon card-icon-full">
+              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                <polyline points="9 12 11 14 15 10"/>
+              </svg>
+            </div>
+            <div>
+              <h3>Full Audit</h3>
+              <p class="card-desc">Run all audit modules sequentially</p>
+            </div>
+          </div>
+          <div class="card-result" id="result-full">
+            <div class="result-placeholder">No results yet</div>
+          </div>
+          <button class="btn btn-accent btn-run" data-endpoint="/api/audit/full" data-target="full">
+            <span class="btn-label">Run Full Audit</span>
+            <span class="btn-spinner"></span>
+          </button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="bottom-bar">
+    <span>VPN Privacy Audit Suite v0.1.0</span>
+  </footer>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>

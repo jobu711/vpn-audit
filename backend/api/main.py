@@ -14,3 +14,7 @@ app.include_router(ws_router)
 async def health_check():
     """Health check endpoint."""
     return {"status": "ok"}
+
+
+# Static file mount MUST be last so API/WS routes take priority.
+app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
