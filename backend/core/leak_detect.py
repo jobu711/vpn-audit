@@ -7,13 +7,11 @@ from typing import Optional
 import psutil
 from scapy.all import DNS, IP, sniff
 
+from backend.core.interfaces import is_tunnel_interface
 from backend.core.models import AuditResult
 
 # Default known VPN DNS resolver IPs (Proton VPN)
 DEFAULT_VPN_DNS = ["10.2.0.1"]
-
-# Interfaces commonly used by VPN tunnels
-TUNNEL_INTERFACE_PREFIXES = ("tun", "wg", "proton", "tap", "utun")
 
 
 class LeakDetector:
@@ -77,7 +75,7 @@ class LeakDetector:
 
         public_ips: list[str] = []
         for iface, addr_list in addrs.items():
-            if iface.lower().startswith(TUNNEL_INTERFACE_PREFIXES):
+            if is_tunnel_interface(iface):
                 continue
             for addr in addr_list:
                 if addr.family not in (socket.AF_INET, socket.AF_INET6):
@@ -110,7 +108,7 @@ class LeakDetector:
 
         ipv6_leaks: list[dict] = []
         for iface, addr_list in addrs.items():
-            if iface.lower().startswith(TUNNEL_INTERFACE_PREFIXES):
+            if is_tunnel_interface(iface):
                 continue
             for addr in addr_list:
                 if addr.family != socket.AF_INET6:
