@@ -20,6 +20,12 @@ class LeakDetector:
     """Detects DNS, WebRTC, and IPv6 leaks while connected to a VPN."""
 
     def __init__(self, vpn_dns: Optional[list[str]] = None, sniff_timeout: int = 5):
+        """Initialise the leak detector.
+
+        Args:
+            vpn_dns: Whitelisted VPN DNS resolver IPs. Defaults to Proton VPN resolvers.
+            sniff_timeout: Seconds to capture DNS traffic before analysis.
+        """
         self.vpn_dns = vpn_dns or DEFAULT_VPN_DNS
         self.sniff_timeout = sniff_timeout
 

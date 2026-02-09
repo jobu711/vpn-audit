@@ -18,6 +18,12 @@ class ConnectionMonitor:
     """Monitors network connection state: interfaces, routing, latency, bandwidth."""
 
     def __init__(self, ping_target: str = "8.8.8.8", poll_interval: float = 1.0):
+        """Initialise the connection monitor.
+
+        Args:
+            ping_target: IP address used for latency measurements.
+            poll_interval: Seconds between state snapshots when streaming.
+        """
         self.ping_target = ping_target
         self.poll_interval = poll_interval
         self._prev_state: dict | None = None

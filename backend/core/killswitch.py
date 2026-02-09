@@ -24,6 +24,12 @@ class KillSwitchTester:
         duration: int = 30,
         tunnel_prefixes: Optional[tuple[str, ...]] = None,
     ):
+        """Initialise the kill switch tester.
+
+        Args:
+            duration: Seconds to monitor traffic after a VPN disconnect event.
+            tunnel_prefixes: Interface name prefixes considered VPN tunnels.
+        """
         self.duration = duration
         self.tunnel_prefixes = tunnel_prefixes or TUNNEL_INTERFACE_PREFIXES
 

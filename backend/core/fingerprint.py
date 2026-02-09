@@ -57,6 +57,11 @@ class TrafficFingerprinter:
     """Analyzes captured traffic for VPN protocol fingerprints."""
 
     def __init__(self, config: CaptureConfig | None = None) -> None:
+        """Initialise the fingerprinter with an optional capture configuration.
+
+        Args:
+            config: Packet capture settings. Uses sensible defaults when omitted.
+        """
         self.config = config or CaptureConfig()
 
     def run(self) -> AuditResult:

@@ -1,3 +1,5 @@
+"""Data models for VPN audit results."""
+
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Literal

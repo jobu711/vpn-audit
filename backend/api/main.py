@@ -1,3 +1,5 @@
+"""FastAPI application entry point for the VPN Privacy Audit Suite."""
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
