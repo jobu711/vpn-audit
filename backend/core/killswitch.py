@@ -1,14 +1,11 @@
 """Kill switch audit module for VPN privacy auditing."""
 
-import time
 from typing import Optional
 
 from scapy.all import IP, IPv6, Packet, sniff
 
+from backend.core.interfaces import is_tunnel_interface, TUNNEL_INTERFACE_PREFIXES
 from backend.core.models import AuditResult
-
-# Interfaces commonly used by VPN tunnels
-TUNNEL_INTERFACE_PREFIXES = ("tun", "wg", "proton", "tap", "utun")
 
 
 class KillSwitchTester:
@@ -35,7 +32,7 @@ class KillSwitchTester:
 
     def _is_tunnel_interface(self, iface: str) -> bool:
         """Return True if interface name matches a known VPN tunnel prefix."""
-        return iface.lower().startswith(self.tunnel_prefixes)
+        return is_tunnel_interface(iface, tunnel_prefixes=self.tunnel_prefixes)
 
     def _extract_info(self, packet: Packet) -> Optional[dict]:
         """Extract interface name, timestamp, and src/dst from a packet."""
