@@ -55,11 +55,13 @@ class TestCheckDns:
         assert "8.8.8.8" in result.details["leaked_servers"]
 
     @patch("backend.core.leak_detect.sniff")
-    def test_warning_when_no_packets_captured(self, mock_sniff):
+    def test_pass_when_no_packets_captured(self, mock_sniff):
+        """No DNS on capturable interfaces means DNS is inside the VPN tunnel."""
         mock_sniff.return_value = []
         detector = LeakDetector()
         result = detector.check_dns()
-        assert result.status == "warning"
+        assert result.status == "pass"
+        assert result.details["leaked_servers"] == []
 
     @patch("backend.core.leak_detect.sniff")
     def test_warning_when_sniff_raises(self, mock_sniff):
@@ -213,8 +215,8 @@ class TestRun:
     @patch("backend.core.leak_detect.psutil.net_if_addrs")
     @patch("backend.core.leak_detect.sniff")
     def test_warning_when_no_fail_but_inconclusive(self, mock_sniff, mock_addrs):
-        # DNS warning (no packets), other checks pass
-        mock_sniff.return_value = []
+        # DNS sniff fails (warning), other checks pass
+        mock_sniff.side_effect = PermissionError("no privileges")
         mock_addrs.return_value = {
             "lo": [_make_snic(socket.AF_INET, "127.0.0.1")],
         }
@@ -223,9 +225,20 @@ class TestRun:
 
     @patch("backend.core.leak_detect.psutil.net_if_addrs")
     @patch("backend.core.leak_detect.sniff")
-    def test_fail_takes_precedence_over_warning(self, mock_sniff, mock_addrs):
-        # DNS warning + WebRTC fail
+    def test_all_pass_when_dns_tunneled(self, mock_sniff, mock_addrs):
+        # No DNS captured (tunneled) + no leaks = all pass
         mock_sniff.return_value = []
+        mock_addrs.return_value = {
+            "lo": [_make_snic(socket.AF_INET, "127.0.0.1")],
+        }
+        result = LeakDetector().run()
+        assert result.status == "pass"
+
+    @patch("backend.core.leak_detect.psutil.net_if_addrs")
+    @patch("backend.core.leak_detect.sniff")
+    def test_fail_takes_precedence_over_warning(self, mock_sniff, mock_addrs):
+        # DNS sniff fails (warning) + WebRTC fail
+        mock_sniff.side_effect = PermissionError("no privileges")
         mock_addrs.return_value = {
             "eth0": [_make_snic(socket.AF_INET, "93.184.216.34")],
         }

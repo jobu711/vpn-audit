@@ -7,26 +7,49 @@ import pytest
 from backend.core.killswitch import KillSwitchTester, TUNNEL_INTERFACE_PREFIXES
 
 
-def _make_packet(iface: str, src: str, dst: str, ts: float, ipv6: bool = False):
+def _make_packet(iface: str, src: str, dst: str, ts: float, ipv6: bool = False,
+                  udp_sport: int = 0, udp_dport: int = 0, udp_payload: bytes = b""):
     """Create a mock packet with the given attributes."""
-    from scapy.all import IP, IPv6
+    from scapy.all import IP, IPv6, UDP, TCP
 
     pkt = MagicMock()
     pkt.sniffed_on = iface
     pkt.time = ts
 
+    has_udp = udp_sport or udp_dport or udp_payload
+
     if ipv6:
         ip6_layer = MagicMock()
         ip6_layer.src = src
         ip6_layer.dst = dst
-        pkt.haslayer.side_effect = lambda layer: layer is IPv6
-        pkt.__getitem__.side_effect = lambda layer: ip6_layer if layer is IPv6 else (_ for _ in ()).throw(KeyError(layer))
+        if has_udp:
+            udp_layer = MagicMock()
+            udp_layer.sport = udp_sport
+            udp_layer.dport = udp_dport
+            udp_layer.payload = udp_payload
+            pkt.haslayer.side_effect = lambda layer: layer is IPv6 or layer is UDP
+            pkt.__getitem__.side_effect = lambda layer: (
+                ip6_layer if layer is IPv6 else udp_layer if layer is UDP
+                else (_ for _ in ()).throw(KeyError(layer)))
+        else:
+            pkt.haslayer.side_effect = lambda layer: layer is IPv6
+            pkt.__getitem__.side_effect = lambda layer: ip6_layer if layer is IPv6 else (_ for _ in ()).throw(KeyError(layer))
     else:
         ip_layer = MagicMock()
         ip_layer.src = src
         ip_layer.dst = dst
-        pkt.haslayer.side_effect = lambda layer: layer is IP
-        pkt.__getitem__.side_effect = lambda layer: ip_layer if layer is IP else (_ for _ in ()).throw(KeyError(layer))
+        if has_udp:
+            udp_layer = MagicMock()
+            udp_layer.sport = udp_sport
+            udp_layer.dport = udp_dport
+            udp_layer.payload = udp_payload
+            pkt.haslayer.side_effect = lambda layer: layer is IP or layer is UDP
+            pkt.__getitem__.side_effect = lambda layer: (
+                ip_layer if layer is IP else udp_layer if layer is UDP
+                else (_ for _ in ()).throw(KeyError(layer)))
+        else:
+            pkt.haslayer.side_effect = lambda layer: layer is IP
+            pkt.__getitem__.side_effect = lambda layer: ip_layer if layer is IP else (_ for _ in ()).throw(KeyError(layer))
 
     return pkt
 
@@ -74,6 +97,89 @@ class TestIsTunnelInterface:
     def test_case_insensitive(self):
         tester = KillSwitchTester()
         assert tester._is_tunnel_interface("TUN0") is True
+
+
+class TestVpnTransportDetection:
+    """Encrypted VPN traffic on physical adapters should not count as leaked."""
+
+    @patch("backend.core.killswitch.sniff")
+    def test_wireguard_traffic_on_physical_adapter_not_leaked(self, mock_sniff):
+        """WireGuard packets (port 51820) on eth0 are tunnel transport, not leaks."""
+        packets = [
+            _make_packet("eth0", "192.168.1.5", "185.1.2.3", 1000.0,
+                         udp_sport=12345, udp_dport=51820),
+            _make_packet("eth0", "185.1.2.3", "192.168.1.5", 1000.5,
+                         udp_sport=51820, udp_dport=12345),
+        ]
+        mock_sniff.return_value = packets
+
+        result = KillSwitchTester(duration=10).run()
+
+        assert result.status == "pass"
+        assert result.details["tunnel_packets"] == 2
+        assert result.details["leaked_packets"] == 0
+
+    @patch("backend.core.killswitch.sniff")
+    def test_openvpn_udp_traffic_not_leaked(self, mock_sniff):
+        """OpenVPN UDP packets (port 1194) on physical adapter are not leaks."""
+        packets = [
+            _make_packet("eth0", "192.168.1.5", "185.1.2.3", 1000.0,
+                         udp_sport=12345, udp_dport=1194),
+        ]
+        mock_sniff.return_value = packets
+
+        result = KillSwitchTester(duration=10).run()
+
+        assert result.status == "pass"
+        assert result.details["tunnel_packets"] == 1
+        assert result.details["leaked_packets"] == 0
+
+    @patch("backend.core.killswitch.sniff")
+    def test_wireguard_signature_on_nonstandard_port(self, mock_sniff):
+        """WireGuard detected by protocol signature even on non-standard ports."""
+        # WireGuard type 4 (Transport Data): 0x04 + 3 zero reserved bytes
+        wg_payload = b"\x04\x00\x00\x00" + b"\x01\x02\x03\x04" + b"\x00" * 8
+        packets = [
+            _make_packet("eth0", "192.168.1.5", "185.1.2.3", 1000.0,
+                         udp_sport=54321, udp_dport=8443, udp_payload=wg_payload),
+        ]
+        mock_sniff.return_value = packets
+
+        result = KillSwitchTester(duration=10).run()
+
+        assert result.status == "pass"
+        assert result.details["tunnel_packets"] == 1
+        assert result.details["leaked_packets"] == 0
+
+    @patch("backend.core.killswitch.sniff")
+    def test_non_vpn_traffic_still_leaked(self, mock_sniff):
+        """Regular traffic on physical adapter is still counted as leaked."""
+        packets = [
+            _make_packet("eth0", "192.168.1.5", "8.8.8.8", 1000.0,
+                         udp_sport=12345, udp_dport=443),
+        ]
+        mock_sniff.return_value = packets
+
+        result = KillSwitchTester(duration=10).run()
+
+        assert result.status == "fail"
+        assert result.details["leaked_packets"] == 1
+
+    @patch("backend.core.killswitch.sniff")
+    def test_mix_vpn_transport_and_leaked(self, mock_sniff):
+        """VPN transport excluded, but plaintext leaks still caught."""
+        packets = [
+            _make_packet("eth0", "192.168.1.5", "185.1.2.3", 1000.0,
+                         udp_sport=12345, udp_dport=51820),
+            _make_packet("eth0", "192.168.1.5", "8.8.8.8", 1001.0),
+        ]
+        mock_sniff.return_value = packets
+
+        result = KillSwitchTester(duration=10).run()
+
+        assert result.status == "fail"
+        assert result.details["tunnel_packets"] == 1
+        assert result.details["leaked_packets"] == 1
 
 
 class TestPassScenario:

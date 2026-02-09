@@ -2,10 +2,13 @@
 
 from typing import Optional
 
-from scapy.all import IP, IPv6, Packet, sniff
+from scapy.all import IP, IPv6, UDP, TCP, Packet, sniff
 
 from backend.core.interfaces import is_tunnel_interface, TUNNEL_INTERFACE_PREFIXES
 from backend.core.models import AuditResult
+
+# Ports used for encrypted VPN tunnel transport (expected on physical adapters)
+_VPN_TRANSPORT_PORTS: frozenset[int] = frozenset({51820, 1194})  # WireGuard, OpenVPN
 
 
 class KillSwitchTester:
@@ -33,6 +36,34 @@ class KillSwitchTester:
     def _is_tunnel_interface(self, iface: str) -> bool:
         """Return True if interface name matches a known VPN tunnel prefix."""
         return is_tunnel_interface(iface, tunnel_prefixes=self.tunnel_prefixes)
+
+    @staticmethod
+    def _is_vpn_transport(packet: Packet) -> bool:
+        """Return True if packet is encrypted VPN tunnel traffic.
+
+        Encrypted VPN traffic (WireGuard, OpenVPN) naturally flows through
+        the physical adapter and is not a privacy leak.  WireGuard is
+        detected by protocol signature (works on any port).
+        """
+        if packet.haslayer(UDP):
+            udp = packet[UDP]
+            # Known VPN ports
+            if udp.dport in _VPN_TRANSPORT_PORTS or udp.sport in _VPN_TRANSPORT_PORTS:
+                return True
+            # WireGuard protocol signature: msg type 1-4 + 3 reserved zero bytes
+            try:
+                payload = bytes(udp.payload)
+            except (TypeError, AttributeError):
+                payload = b""
+            if (len(payload) >= 4
+                    and payload[0] in (1, 2, 3, 4)
+                    and payload[1:4] == b"\x00\x00\x00"):
+                return True
+        if packet.haslayer(TCP):
+            tcp = packet[TCP]
+            if tcp.dport == 1194 or tcp.sport == 1194:
+                return True
+        return False
 
     def _extract_info(self, packet: Packet) -> Optional[dict]:
         """Extract interface name, timestamp, and src/dst from a packet."""
@@ -86,6 +117,8 @@ class KillSwitchTester:
             if info is None:
                 continue
             if self._is_tunnel_interface(info["interface"]):
+                tunnel.append(info)
+            elif self._is_vpn_transport(pkt):
                 tunnel.append(info)
             else:
                 leaked.append(info)

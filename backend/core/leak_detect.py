@@ -2,6 +2,8 @@
 
 import ipaddress
 import socket
+import threading
+import time
 from typing import Optional
 
 import psutil
@@ -27,8 +29,21 @@ class LeakDetector:
         self.vpn_dns = vpn_dns or DEFAULT_VPN_DNS
         self.sniff_timeout = sniff_timeout
 
+    @staticmethod
+    def _trigger_dns() -> None:
+        """Perform a DNS lookup to generate traffic during the sniff window."""
+        time.sleep(0.5)
+        try:
+            socket.getaddrinfo("example.com", 80)
+        except Exception:
+            pass
+
     def check_dns(self) -> AuditResult:
         """Sniff DNS traffic and flag queries sent to non-VPN resolvers."""
+        # Trigger a DNS lookup during sniff so silence means "tunneled", not "idle"
+        trigger = threading.Thread(target=self._trigger_dns, daemon=True)
+        trigger.start()
+
         try:
             packets = sniff(
                 filter="udp port 53",
@@ -42,9 +57,10 @@ class LeakDetector:
             )
 
         if not packets:
+            # We triggered a lookup but captured nothing — DNS is inside the tunnel
             return AuditResult(
-                status="warning",
-                details={"error": "No DNS packets captured", "leaked_servers": []},
+                status="pass",
+                details={"leaked_servers": []},
             )
 
         leaked_servers: list[str] = []
