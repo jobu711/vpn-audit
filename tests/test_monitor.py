@@ -214,6 +214,43 @@ class TestBandwidth:
 
 
 # ---------------------------------------------------------------------------
+# snapshot() includes external_ip
+# ---------------------------------------------------------------------------
+
+
+class TestSnapshot:
+    @patch("backend.core.monitor.psutil.net_io_counters")
+    @patch("backend.core.monitor.time.sleep")
+    @patch("backend.core.monitor.subprocess.run")
+    @patch("backend.core.monitor.psutil.net_if_stats")
+    @patch("backend.core.monitor.psutil.net_if_addrs")
+    @patch("backend.core.external_ip.urllib.request.urlopen")
+    def test_snapshot_includes_external_ip(self, mock_urlopen, mock_addrs, mock_stats, mock_subproc, mock_sleep, mock_io):
+        import json
+        resp = MagicMock()
+        resp.read.return_value = json.dumps({
+            "query": "1.2.3.4", "country": "US", "city": "NYC",
+            "isp": "TestISP", "org": "TestOrg", "as": "AS1",
+        }).encode()
+        resp.__enter__ = lambda s: s
+        resp.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = resp
+
+        mock_addrs.return_value = _make_addrs({"eth0": [(AF_INET, "10.0.0.1")]})
+        mock_stats.return_value = _make_stats({"eth0": True})
+        mock_subproc.return_value = MagicMock(stdout="", returncode=1)
+        mock_io.side_effect = [
+            FAKE_IO(0, 0, 0, 0, 0, 0, 0, 0),
+            FAKE_IO(0, 0, 0, 0, 0, 0, 0, 0),
+        ]
+
+        mon = ConnectionMonitor()
+        snap = mon.snapshot()
+        assert "external_ip" in snap
+        assert snap["external_ip"]["ip"] == "1.2.3.4"
+
+
+# ---------------------------------------------------------------------------
 # run() -> AuditResult
 # ---------------------------------------------------------------------------
 

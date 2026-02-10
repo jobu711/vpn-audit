@@ -28,6 +28,26 @@
         <span class="ws-indicator" id="wsIndicator" title="WebSocket status"></span>
       </div>
 
+      <!-- External IP -->
+      <div class="monitor-section" id="externalIpSection">
+        <h3>External IP</h3>
+        <div class="extip-card" id="extipCard">
+          <div class="extip-ip" id="extipAddress">--</div>
+          <div class="extip-row">
+            <span class="extip-label">Location</span>
+            <span class="extip-value" id="extipLocation">--</span>
+          </div>
+          <div class="extip-row">
+            <span class="extip-label">ISP</span>
+            <span class="extip-value" id="extipIsp">--</span>
+          </div>
+          <div class="extip-row">
+            <span class="extip-label">VPN Status</span>
+            <span class="extip-badge" id="extipBadge">Unknown</span>
+          </div>
+        </div>
+      </div>
+
       <!-- Latency & Bandwidth Gauges -->
       <div class="gauges">
         <div class="gauge-card">

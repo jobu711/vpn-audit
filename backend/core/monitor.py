@@ -11,6 +11,7 @@ from typing import AsyncGenerator
 
 import psutil
 
+from backend.core.external_ip import ExternalIPChecker
 from backend.core.models import AuditResult
 
 
@@ -27,6 +28,7 @@ class ConnectionMonitor:
         self.ping_target = ping_target
         self.poll_interval = poll_interval
         self._prev_state: dict | None = None
+        self._ip_checker = ExternalIPChecker()
 
     # ------------------------------------------------------------------
     # Interface polling
@@ -177,6 +179,7 @@ class ConnectionMonitor:
             "routing": self.get_routing_table(),
             "latency_ms": self.measure_latency(),
             "bandwidth_mbps": self.estimate_bandwidth(),
+            "external_ip": self._ip_checker.lookup(),
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 

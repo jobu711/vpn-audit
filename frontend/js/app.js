@@ -42,6 +42,12 @@
     resultKillswitch: document.getElementById("result-killswitch"),
     resultFull: document.getElementById("result-full"),
 
+    // External IP
+    extipAddress: document.getElementById("extipAddress"),
+    extipLocation: document.getElementById("extipLocation"),
+    extipIsp: document.getElementById("extipIsp"),
+    extipBadge: document.getElementById("extipBadge"),
+
     // Buttons
     btnFetchResults: document.getElementById("btnFetchResults"),
   };
@@ -118,11 +124,45 @@
   // ---- Monitor Update Handler ----
 
   function handleMonitorUpdate(data) {
+    updateExternalIP(data.external_ip);
     updateGauges(data);
     updateInterfaces(data.interfaces || []);
     updateRoutes(data.routing || []);
     updateEventLog(data.event || null, data.timestamp);
     dom.lastUpdate.textContent = formatTimestamp(data.timestamp);
+  }
+
+  // ---- External IP ----
+
+  function updateExternalIP(info) {
+    if (!info || info.status === "error") {
+      dom.extipAddress.textContent = "Unavailable";
+      dom.extipLocation.textContent = "--";
+      dom.extipIsp.textContent = "--";
+      dom.extipBadge.textContent = "Unknown";
+      dom.extipBadge.className = "extip-badge unknown";
+      return;
+    }
+
+    dom.extipAddress.textContent = info.ip || "--";
+
+    var parts = [];
+    if (info.city) parts.push(info.city);
+    if (info.country) parts.push(info.country);
+    dom.extipLocation.textContent = parts.length ? parts.join(", ") : "--";
+
+    dom.extipIsp.textContent = info.isp || "--";
+
+    if (info.vpn_masked === true) {
+      dom.extipBadge.textContent = "Masked";
+      dom.extipBadge.className = "extip-badge masked";
+    } else if (info.vpn_masked === false) {
+      dom.extipBadge.textContent = "Exposed";
+      dom.extipBadge.className = "extip-badge exposed";
+    } else {
+      dom.extipBadge.textContent = "Unknown";
+      dom.extipBadge.className = "extip-badge unknown";
+    }
   }
 
   // ---- Gauges ----

@@ -5,6 +5,7 @@ from dataclasses import asdict
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
+from backend.core.external_ip import ExternalIPChecker
 from backend.core.fingerprint import TrafficFingerprinter
 from backend.core.killswitch import KillSwitchTester
 from backend.core.leak_detect import LeakDetector
@@ -74,6 +75,18 @@ async def audit_full():
         }
         _results["full"] = combined
         return combined
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"error": str(exc)})
+
+
+@router.get("/external-ip")
+async def external_ip():
+    """Return current external IP with geolocation and VPN masking status."""
+    try:
+        checker = ExternalIPChecker()
+        result = checker.lookup()
+        _results["external_ip"] = result
+        return result
     except Exception as exc:
         return JSONResponse(status_code=500, content={"error": str(exc)})
 
