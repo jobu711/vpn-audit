@@ -196,6 +196,43 @@ async def test_audit_full_error_returns_500(client):
     assert "error" in response.json()
 
 
+# ---- GET /api/external-ip ----
+
+@pytest.mark.asyncio
+async def test_external_ip_returns_result(client):
+    """GET /api/external-ip should return external IP info dict."""
+    mock_data = {
+        "ip": "185.159.157.1",
+        "country": "Switzerland",
+        "city": "Zurich",
+        "isp": "Proton AG",
+        "org": "Proton VPN",
+        "vpn_masked": True,
+        "status": "ok",
+        "timestamp": "2024-01-01T00:00:00+00:00",
+    }
+    with patch("backend.api.routes.ExternalIPChecker") as MockCls:
+        MockCls.return_value.lookup.return_value = mock_data
+        response = await client.get("/api/external-ip")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ip"] == "185.159.157.1"
+    assert data["vpn_masked"] is True
+    assert data["status"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_external_ip_error_returns_500(client):
+    """GET /api/external-ip should return 500 when checker raises."""
+    with patch("backend.api.routes.ExternalIPChecker") as MockCls:
+        MockCls.return_value.lookup.side_effect = RuntimeError("network error")
+        response = await client.get("/api/external-ip")
+
+    assert response.status_code == 500
+    assert "error" in response.json()
+
+
 # ---- GET /api/status ----
 
 @pytest.mark.asyncio
