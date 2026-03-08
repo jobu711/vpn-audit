@@ -25,7 +25,7 @@ _ip_checker = ExternalIPChecker()
 async def audit_leaks():
     """Run DNS, WebRTC, and IPv6 leak detection."""
     try:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         detector = LeakDetector()
         result = await loop.run_in_executor(None, detector.run)
         result_dict = asdict(result)
@@ -39,7 +39,7 @@ async def audit_leaks():
 async def audit_fingerprint():
     """Run traffic fingerprinting analysis."""
     try:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         fingerprinter = TrafficFingerprinter()
         result = await loop.run_in_executor(None, fingerprinter.run)
         result_dict = asdict(result)
@@ -53,7 +53,7 @@ async def audit_fingerprint():
 async def audit_killswitch():
     """Run kill switch effectiveness test."""
     try:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         tester = KillSwitchTester()
         result = await loop.run_in_executor(None, tester.run)
         result_dict = asdict(result)
@@ -67,7 +67,7 @@ async def audit_killswitch():
 async def audit_full():
     """Run all audit modules and return combined results."""
     try:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         def _run_all():
             leak = asdict(LeakDetector().run())

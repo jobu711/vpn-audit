@@ -187,12 +187,13 @@ class ConnectionMonitor:
 
     async def snapshot(self) -> dict:
         """Build a full state dict of current connection info."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         interfaces = self.get_interfaces()  # fast psutil in-memory call
-        routing, latency, bandwidth_result = await asyncio.gather(
+        routing, latency, bandwidth_result, external_ip = await asyncio.gather(
             loop.run_in_executor(None, self.get_routing_table),
             loop.run_in_executor(None, self.measure_latency),
             loop.run_in_executor(None, self.estimate_bandwidth),
+            loop.run_in_executor(None, self._ip_checker.lookup),
         )
         bandwidth_mbps, bandwidth_per_interface = bandwidth_result
         return {
@@ -201,7 +202,7 @@ class ConnectionMonitor:
             "latency_ms": latency,
             "bandwidth_mbps": bandwidth_mbps,
             "bandwidth_per_interface": bandwidth_per_interface,
-            "external_ip": self._ip_checker.lookup(),
+            "external_ip": external_ip,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 

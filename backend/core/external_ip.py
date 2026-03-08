@@ -23,8 +23,6 @@ _DEFAULT_VPN_PATTERNS = [
     "ivpn",
 ]
 
-_API_URL = "http://ip-api.com/json/?fields=query,country,city,isp,org,as"
-
 # Ordered fallback API sources: (url, normalizer_function_name)
 _API_SOURCES = [
     {
@@ -96,7 +94,7 @@ class ExternalIPChecker:
         self,
         cache_ttl: float = 30.0,
         vpn_patterns: list[str] | None = None,
-        api_url: str = _API_URL,
+        api_url: str = _API_SOURCES[0]["url"],
         timeout: float = 5.0,
     ):
         self.cache_ttl = cache_ttl
@@ -104,7 +102,7 @@ class ExternalIPChecker:
         self.api_url = api_url
         self.timeout = timeout
         # When api_url is explicitly overridden, only use that single URL
-        self._use_fallback = api_url == _API_URL
+        self._use_fallback = api_url == _API_SOURCES[0]["url"]
         self._cache: dict | None = None
         self._cache_time: float = 0.0
 

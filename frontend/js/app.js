@@ -156,7 +156,7 @@
     if (info.vpn_masked === true) {
       dom.extipBadge.textContent = "Masked";
       dom.extipBadge.className = "extip-badge masked";
-    } else if (info.vpn_masked === false) {
+    } else if (info.vpn_masked === false && info.isp) {
       dom.extipBadge.textContent = "Exposed";
       dom.extipBadge.className = "extip-badge exposed";
     } else {
@@ -209,10 +209,14 @@
 
   // ---- Interfaces ----
 
-  var TUNNEL_PREFIXES = ["tun", "wg", "proton", "nordlynx", "mullvad", "utun", "ppp"];
+  var TUNNEL_PREFIXES = ["tun", "wg", "proton", "nordlynx", "mullvad", "utun", "ppp", "tap"];
 
   function isTunnelInterface(name) {
     var lower = name.toLowerCase();
+    // Windows NPF GUID-based VPN adapters (e.g. \Device\NPF_{GUID})
+    if (lower.indexOf("\\device\\npf_") !== -1) return true;
+    // Windows Wintun/WireGuard adapters
+    if (lower.indexOf("wintun") !== -1) return true;
     for (var i = 0; i < TUNNEL_PREFIXES.length; i++) {
       if (lower.indexOf(TUNNEL_PREFIXES[i]) === 0) return true;
     }
