@@ -126,7 +126,7 @@
   function handleMonitorUpdate(data) {
     updateExternalIP(data.external_ip);
     updateGauges(data);
-    updateInterfaces(data.interfaces || []);
+    updateInterfaces(data.interfaces || [], data.bandwidth_per_interface || {});
     updateRoutes(data.routing || []);
     updateEventLog(data.event || null, data.timestamp);
     dom.lastUpdate.textContent = formatTimestamp(data.timestamp);
@@ -209,7 +209,17 @@
 
   // ---- Interfaces ----
 
-  function updateInterfaces(interfaces) {
+  var TUNNEL_PREFIXES = ["tun", "wg", "proton", "nordlynx", "mullvad", "utun", "ppp"];
+
+  function isTunnelInterface(name) {
+    var lower = name.toLowerCase();
+    for (var i = 0; i < TUNNEL_PREFIXES.length; i++) {
+      if (lower.indexOf(TUNNEL_PREFIXES[i]) === 0) return true;
+    }
+    return false;
+  }
+
+  function updateInterfaces(interfaces, bandwidthPerInterface) {
     if (!interfaces.length) {
       dom.interfaceList.innerHTML = '<div class="placeholder-text">No interfaces detected</div>';
       return;
@@ -223,11 +233,25 @@
         ? iface.addresses.join(", ")
         : "No address";
 
+      var bwHtml = "";
+      if (bandwidthPerInterface && bandwidthPerInterface[iface.name] != null) {
+        var bw = bandwidthPerInterface[iface.name];
+        var isTunnel = isTunnelInterface(iface.name);
+        var bwCls = "iface-bandwidth";
+        if (!isTunnel && bw > 0.1) {
+          bwCls += " iface-bandwidth-warning";
+        } else {
+          bwCls += " iface-bandwidth-ok";
+        }
+        bwHtml = '<span class="' + bwCls + '">' + bw.toFixed(1) + ' Mbps</span>';
+      }
+
       html +=
         '<div class="interface-item">' +
           '<span class="iface-status ' + statusCls + '"></span>' +
           '<span class="iface-name">' + escapeHtml(iface.name) + '</span>' +
           '<span class="iface-addrs">' + escapeHtml(addrs) + '</span>' +
+          bwHtml +
         '</div>';
     }
 

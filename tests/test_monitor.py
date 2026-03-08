@@ -203,13 +203,21 @@ class TestBandwidth:
     @patch("backend.core.monitor.psutil.net_io_counters")
     def test_estimate_bandwidth(self, mock_io, mock_sleep):
         mock_io.side_effect = [
-            FAKE_IO(bytes_sent=0, bytes_recv=0, packets_sent=0, packets_recv=0, errin=0, errout=0, dropin=0, dropout=0),
-            FAKE_IO(bytes_sent=62500, bytes_recv=62500, packets_sent=0, packets_recv=0, errin=0, errout=0, dropin=0, dropout=0),
+            {
+                "eth0": FAKE_IO(bytes_sent=0, bytes_recv=0, packets_sent=0, packets_recv=0, errin=0, errout=0, dropin=0, dropout=0),
+                "tun0": FAKE_IO(bytes_sent=0, bytes_recv=0, packets_sent=0, packets_recv=0, errin=0, errout=0, dropin=0, dropout=0),
+            },
+            {
+                "eth0": FAKE_IO(bytes_sent=62500, bytes_recv=62500, packets_sent=0, packets_recv=0, errin=0, errout=0, dropin=0, dropout=0),
+                "tun0": FAKE_IO(bytes_sent=0, bytes_recv=0, packets_sent=0, packets_recv=0, errin=0, errout=0, dropin=0, dropout=0),
+            },
         ]
         mon = ConnectionMonitor()
-        mbps = mon.estimate_bandwidth(sample_interval=0.5)
+        aggregate, per_iface = mon.estimate_bandwidth(sample_interval=0.5)
         # 125000 bytes in 0.5s = 250000 bytes/s = 2 Mbps
-        assert mbps == 2.0
+        assert aggregate == 2.0
+        assert per_iface == {"eth0": 2.0}
+        assert "tun0" not in per_iface  # filtered out (0.0 Mbps)
         mock_sleep.assert_called_once_with(0.5)
 
 
@@ -241,14 +249,16 @@ class TestSnapshot:
         mock_stats.return_value = _make_stats({"eth0": True})
         mock_subproc.return_value = MagicMock(stdout="", returncode=1)
         mock_io.side_effect = [
-            FAKE_IO(0, 0, 0, 0, 0, 0, 0, 0),
-            FAKE_IO(0, 0, 0, 0, 0, 0, 0, 0),
+            {"eth0": FAKE_IO(0, 0, 0, 0, 0, 0, 0, 0)},
+            {"eth0": FAKE_IO(0, 0, 0, 0, 0, 0, 0, 0)},
         ]
 
         mon = ConnectionMonitor()
         snap = await mon.snapshot()
         assert "external_ip" in snap
         assert snap["external_ip"]["ip"] == "1.2.3.4"
+        assert "bandwidth_per_interface" in snap
+        assert isinstance(snap["bandwidth_per_interface"], dict)
 
 
 # ---------------------------------------------------------------------------
@@ -262,7 +272,9 @@ class TestRun:
         mon.get_interfaces = MagicMock(return_value=state.get("interfaces", []))
         mon.get_routing_table = MagicMock(return_value=state.get("routing", []))
         mon.measure_latency = MagicMock(return_value=state.get("latency_ms"))
-        mon.estimate_bandwidth = MagicMock(return_value=state.get("bandwidth_mbps", 0.0))
+        bw = state.get("bandwidth_mbps", 0.0)
+        bw_per = state.get("bandwidth_per_interface", {})
+        mon.estimate_bandwidth = MagicMock(return_value=(bw, bw_per))
         mon._ip_checker = MagicMock()
         mon._ip_checker.lookup.return_value = state.get("external_ip", {})
         return mon

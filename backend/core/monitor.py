@@ -156,17 +156,30 @@ class ConnectionMonitor:
     # Bandwidth estimation
     # ------------------------------------------------------------------
 
-    def estimate_bandwidth(self, sample_interval: float = 0.5) -> float:
-        """Estimate current throughput in Mbps by sampling net_io_counters."""
+    def estimate_bandwidth(self, sample_interval: float = 0.5) -> tuple[float, dict]:
+        """Estimate current throughput in Mbps by sampling net_io_counters per-NIC."""
         try:
-            c1 = psutil.net_io_counters()
+            c1 = psutil.net_io_counters(pernic=True)
             time.sleep(sample_interval)
-            c2 = psutil.net_io_counters()
-            bytes_delta = (c2.bytes_sent - c1.bytes_sent) + (c2.bytes_recv - c1.bytes_recv)
-            mbps = (bytes_delta * 8) / (sample_interval * 1_000_000)
-            return round(mbps, 3)
+            c2 = psutil.net_io_counters(pernic=True)
+
+            per_iface: dict[str, float] = {}
+            total_bytes = 0
+            for name in c2:
+                if name not in c1:
+                    continue
+                sent_delta = c2[name].bytes_sent - c1[name].bytes_sent
+                recv_delta = c2[name].bytes_recv - c1[name].bytes_recv
+                bytes_delta = sent_delta + recv_delta
+                total_bytes += bytes_delta
+                mbps = round((bytes_delta * 8) / (sample_interval * 1_000_000), 3)
+                if mbps > 0.0:
+                    per_iface[name] = mbps
+
+            aggregate = round((total_bytes * 8) / (sample_interval * 1_000_000), 3)
+            return aggregate, per_iface
         except Exception:
-            return 0.0
+            return 0.0, {}
 
     # ------------------------------------------------------------------
     # Snapshot / state dict
@@ -176,16 +189,18 @@ class ConnectionMonitor:
         """Build a full state dict of current connection info."""
         loop = asyncio.get_event_loop()
         interfaces = self.get_interfaces()  # fast psutil in-memory call
-        routing, latency, bandwidth = await asyncio.gather(
+        routing, latency, bandwidth_result = await asyncio.gather(
             loop.run_in_executor(None, self.get_routing_table),
             loop.run_in_executor(None, self.measure_latency),
             loop.run_in_executor(None, self.estimate_bandwidth),
         )
+        bandwidth_mbps, bandwidth_per_interface = bandwidth_result
         return {
             "interfaces": interfaces,
             "routing": routing,
             "latency_ms": latency,
-            "bandwidth_mbps": bandwidth,
+            "bandwidth_mbps": bandwidth_mbps,
+            "bandwidth_per_interface": bandwidth_per_interface,
             "external_ip": self._ip_checker.lookup(),
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
@@ -196,11 +211,13 @@ class ConnectionMonitor:
 
     def run(self) -> AuditResult:
         """Take a snapshot and return an AuditResult summarising connection state."""
+        bandwidth_mbps, bandwidth_per_interface = self.estimate_bandwidth()
         state = {
             "interfaces": self.get_interfaces(),
             "routing": self.get_routing_table(),
             "latency_ms": self.measure_latency(),
-            "bandwidth_mbps": self.estimate_bandwidth(),
+            "bandwidth_mbps": bandwidth_mbps,
+            "bandwidth_per_interface": bandwidth_per_interface,
             "external_ip": self._ip_checker.lookup(),
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }

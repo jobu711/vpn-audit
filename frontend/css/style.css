@@ -966,6 +966,24 @@ h1, h2, h3, h4 {
   padding: 8px 0;
 }
 
+/* Per-interface bandwidth indicators */
+.iface-bandwidth {
+    margin-left: auto;
+    font-size: 0.75rem;
+    font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.iface-bandwidth-ok {
+    color: var(--color-pass);
+}
+
+.iface-bandwidth-warning {
+    color: var(--color-warning);
+    font-weight: 600;
+}
+
 /* --- Responsive --- */
 
 @media (max-width: 960px) {
