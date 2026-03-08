@@ -10,6 +10,8 @@ from backend.core.models import AuditResult
 # Known VPN provider patterns (matched case-insensitively against ISP/org fields)
 _DEFAULT_VPN_PATTERNS = [
     "proton",
+    "datacamp",
+    "pv-sl-hosted",
     "mullvad",
     "nordvpn",
     "expressvpn",
