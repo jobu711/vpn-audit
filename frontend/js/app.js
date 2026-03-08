@@ -359,7 +359,7 @@
         if (target === "full") {
           renderFullResult(resultEl, data);
         } else {
-          renderSingleResult(resultEl, data);
+          renderSingleResult(resultEl, data, target);
         }
       })
       .catch(function (err) {
@@ -372,7 +372,12 @@
       });
   }
 
-  function renderSingleResult(el, data) {
+  function renderSingleResult(el, data, auditType) {
+    if (auditType === "leaks") return renderLeakResult(el, data);
+    if (auditType === "fingerprint") return renderFingerprintResult(el, data);
+    if (auditType === "killswitch") return renderKillswitchResult(el, data);
+
+    // Fallback: existing status + JSON details display
     var status = data.status || "warning";
     el.className = "card-result status-" + status;
 
@@ -392,6 +397,198 @@
 
     if (detailsStr) {
       html += '<div class="result-details">' + escapeHtml(detailsStr) + '</div>';
+    }
+
+    if (data.timestamp) {
+      html += '<div class="result-timestamp">' + formatTimestamp(data.timestamp) + '</div>';
+    }
+
+    el.innerHTML = html;
+  }
+
+  // ---- Module-Specific Renderers ----
+
+  function renderLeakResult(el, data) {
+    var status = data.status || "warning";
+    el.className = "card-result status-" + status;
+
+    var details = data.details || {};
+    var checks = [
+      { name: "DNS", key: "dns", itemsKey: "servers" },
+      { name: "WebRTC", key: "webrtc", itemsKey: "ips" },
+      { name: "IPv6", key: "ipv6", itemsKey: "addresses" }
+    ];
+
+    var html =
+      '<div class="result-status ' + status + '">' +
+        '<span class="status-icon">' + statusIcon(status) + '</span>' +
+        '<span>' + status.toUpperCase() + '</span>' +
+      '</div>' +
+      '<table class="result-table">' +
+        '<thead><tr><th>Check</th><th>Status</th><th>Details</th></tr></thead>' +
+        '<tbody>';
+
+    for (var i = 0; i < checks.length; i++) {
+      var c = checks[i];
+      var info = details[c.key] || {};
+      var leaked = info.leaked;
+      var badgeCls = leaked ? "fail" : "pass";
+      var badgeLabel = leaked ? "FAIL" : "PASS";
+      var items = info[c.itemsKey] || [];
+      var detailText = "";
+
+      if (leaked && items.length) {
+        detailText = '<span class="leak-detail">' + escapeHtml(items.join(", ")) + '</span>';
+      } else if (!leaked) {
+        detailText = '<span class="leak-detail">None detected</span>';
+      }
+
+      html +=
+        '<tr>' +
+          '<td>' + c.name + '</td>' +
+          '<td><span class="status-badge ' + badgeCls + '">' + badgeLabel + '</span></td>' +
+          '<td>' + detailText + '</td>' +
+        '</tr>';
+    }
+
+    html += '</tbody></table>';
+
+    if (data.timestamp) {
+      html += '<div class="result-timestamp">' + formatTimestamp(data.timestamp) + '</div>';
+    }
+
+    el.innerHTML = html;
+  }
+
+  function renderFingerprintResult(el, data) {
+    var status = data.status || "warning";
+    el.className = "card-result status-" + status;
+
+    var details = data.details || {};
+    var protocols = details.protocols || {};
+    var totalPackets = details.total_packets || 0;
+    var vpnRatio = details.vpn_ratio;
+    var reason = details.reason || "";
+
+    // Determine protocol names and sort by packet count descending
+    var protoNames = [];
+    for (var key in protocols) {
+      if (protocols.hasOwnProperty(key)) {
+        protoNames.push(key);
+      }
+    }
+    protoNames.sort(function (a, b) { return protocols[b] - protocols[a]; });
+
+    var html =
+      '<div class="result-status ' + status + '">' +
+        '<span class="status-icon">' + statusIcon(status) + '</span>' +
+        '<span>' + status.toUpperCase() + '</span>' +
+      '</div>' +
+      '<table class="result-table">' +
+        '<thead><tr><th>Protocol</th><th>Packets</th><th>Distribution</th></tr></thead>' +
+        '<tbody>';
+
+    for (var i = 0; i < protoNames.length; i++) {
+      var name = protoNames[i];
+      var count = protocols[name];
+      var pct = totalPackets > 0 ? (count / totalPackets * 100) : 0;
+
+      html +=
+        '<tr>' +
+          '<td>' + escapeHtml(name) + '</td>' +
+          '<td>' + count + '</td>' +
+          '<td>' +
+            '<div class="protocol-bar">' +
+              '<div class="protocol-bar-fill" style="width: ' + pct.toFixed(1) + '%"></div>' +
+            '</div>' +
+          '</td>' +
+        '</tr>';
+    }
+
+    html += '</tbody></table>';
+
+    // VPN exposure ratio
+    if (vpnRatio != null) {
+      var ratioPct = (vpnRatio * 100).toFixed(1);
+      var ratioColor = "";
+      if (vpnRatio < 0.03) {
+        ratioColor = "pass";
+      } else if (vpnRatio < 0.10) {
+        ratioColor = "warning";
+      } else {
+        ratioColor = "fail";
+      }
+      html +=
+        '<div class="ks-summary">' +
+          '<span>VPN exposure ratio: </span>' +
+          '<span class="status-badge ' + ratioColor + '">' + ratioPct + '%</span>' +
+        '</div>';
+    }
+
+    if (reason) {
+      html += '<div class="ks-summary">' + escapeHtml(reason) + '</div>';
+    }
+
+    if (data.timestamp) {
+      html += '<div class="result-timestamp">' + formatTimestamp(data.timestamp) + '</div>';
+    }
+
+    el.innerHTML = html;
+  }
+
+  function renderKillswitchResult(el, data) {
+    var status = data.status || "warning";
+    el.className = "card-result status-" + status;
+
+    var details = data.details || {};
+    var duration = details.duration;
+    var totalPkts = details.total_packets;
+    var tunnelPkts = details.tunnel_packets;
+    var leakedPkts = details.leaked_packets;
+    var perIface = details.per_interface || {};
+    var timeToBlock = details.time_to_block;
+
+    var html =
+      '<div class="result-status ' + status + '">' +
+        '<span class="status-icon">' + statusIcon(status) + '</span>' +
+        '<span>' + status.toUpperCase() + '</span>' +
+      '</div>' +
+      '<table class="result-table">' +
+        '<tbody>' +
+          '<tr><td>Duration</td><td>' + (duration != null ? duration + 's' : '--') + '</td></tr>' +
+          '<tr><td>Total Packets</td><td>' + (totalPkts != null ? totalPkts : '--') + '</td></tr>' +
+          '<tr><td>Tunnel Packets</td><td>' + (tunnelPkts != null ? tunnelPkts : '--') + '</td></tr>' +
+          '<tr><td>Leaked Packets</td><td>' + (leakedPkts != null ? leakedPkts : '--') + '</td></tr>' +
+        '</tbody>' +
+      '</table>';
+
+    if (leakedPkts != null && leakedPkts > 0) {
+      // Show per-interface breakdown
+      var ifaceNames = [];
+      for (var key in perIface) {
+        if (perIface.hasOwnProperty(key)) {
+          ifaceNames.push(key);
+        }
+      }
+      if (ifaceNames.length) {
+        html +=
+          '<table class="result-table">' +
+            '<thead><tr><th>Interface</th><th>Leaked</th></tr></thead>' +
+            '<tbody>';
+        for (var i = 0; i < ifaceNames.length; i++) {
+          html +=
+            '<tr>' +
+              '<td>' + escapeHtml(ifaceNames[i]) + '</td>' +
+              '<td>' + perIface[ifaceNames[i]] + '</td>' +
+            '</tr>';
+        }
+        html += '</tbody></table>';
+      }
+      if (timeToBlock != null) {
+        html += '<div class="ks-summary">Time to block: ' + timeToBlock + 's</div>';
+      }
+    } else if (leakedPkts != null && leakedPkts === 0) {
+      html += '<div class="ks-ok">Kill switch held &mdash; no leaks detected</div>';
     }
 
     if (data.timestamp) {
@@ -426,7 +623,7 @@
       // Also update individual cards
       var individualEl = document.getElementById("result-" + key);
       if (individualEl) {
-        renderSingleResult(individualEl, mod);
+        renderSingleResult(individualEl, mod, key);
       }
     }
 
@@ -452,13 +649,13 @@
       })
       .then(function (data) {
         if (data.leaks) {
-          renderSingleResult(dom.resultLeaks, data.leaks);
+          renderSingleResult(dom.resultLeaks, data.leaks, "leaks");
         }
         if (data.fingerprint) {
-          renderSingleResult(dom.resultFingerprint, data.fingerprint);
+          renderSingleResult(dom.resultFingerprint, data.fingerprint, "fingerprint");
         }
         if (data.killswitch) {
-          renderSingleResult(dom.resultKillswitch, data.killswitch);
+          renderSingleResult(dom.resultKillswitch, data.killswitch, "killswitch");
         }
         if (data.full) {
           renderFullResult(dom.resultFull, data.full);
