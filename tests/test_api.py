@@ -211,8 +211,8 @@ async def test_external_ip_returns_result(client):
         "status": "ok",
         "timestamp": "2024-01-01T00:00:00+00:00",
     }
-    with patch("backend.api.routes.ExternalIPChecker") as MockCls:
-        MockCls.return_value.lookup.return_value = mock_data
+    with patch("backend.api.routes._ip_checker") as mock_checker:
+        mock_checker.lookup.return_value = mock_data
         response = await client.get("/api/external-ip")
 
     assert response.status_code == 200
@@ -225,8 +225,8 @@ async def test_external_ip_returns_result(client):
 @pytest.mark.asyncio
 async def test_external_ip_error_returns_500(client):
     """GET /api/external-ip should return 500 when checker raises."""
-    with patch("backend.api.routes.ExternalIPChecker") as MockCls:
-        MockCls.return_value.lookup.side_effect = RuntimeError("network error")
+    with patch("backend.api.routes._ip_checker") as mock_checker:
+        mock_checker.lookup.side_effect = RuntimeError("network error")
         response = await client.get("/api/external-ip")
 
     assert response.status_code == 500

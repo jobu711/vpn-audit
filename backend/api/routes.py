@@ -16,6 +16,9 @@ router = APIRouter(prefix="/api")
 # In-memory storage for latest audit results, keyed by audit type.
 _results: dict[str, dict] = {}
 
+# Module-level singleton for external IP checks (preserves cache across requests).
+_ip_checker = ExternalIPChecker()
+
 
 @router.post("/audit/leaks")
 async def audit_leaks():
@@ -83,8 +86,7 @@ async def audit_full():
 async def external_ip():
     """Return current external IP with geolocation and VPN masking status."""
     try:
-        checker = ExternalIPChecker()
-        result = checker.lookup()
+        result = _ip_checker.lookup()
         _results["external_ip"] = result
         return result
     except Exception as exc:
