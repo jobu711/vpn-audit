@@ -219,13 +219,14 @@ class TestBandwidth:
 
 
 class TestSnapshot:
+    @pytest.mark.asyncio
     @patch("backend.core.monitor.psutil.net_io_counters")
     @patch("backend.core.monitor.time.sleep")
     @patch("backend.core.monitor.subprocess.run")
     @patch("backend.core.monitor.psutil.net_if_stats")
     @patch("backend.core.monitor.psutil.net_if_addrs")
     @patch("backend.core.external_ip.urllib.request.urlopen")
-    def test_snapshot_includes_external_ip(self, mock_urlopen, mock_addrs, mock_stats, mock_subproc, mock_sleep, mock_io):
+    async def test_snapshot_includes_external_ip(self, mock_urlopen, mock_addrs, mock_stats, mock_subproc, mock_sleep, mock_io):
         import json
         resp = MagicMock()
         resp.read.return_value = json.dumps({
@@ -245,7 +246,7 @@ class TestSnapshot:
         ]
 
         mon = ConnectionMonitor()
-        snap = mon.snapshot()
+        snap = await mon.snapshot()
         assert "external_ip" in snap
         assert snap["external_ip"]["ip"] == "1.2.3.4"
 
@@ -256,67 +257,69 @@ class TestSnapshot:
 
 
 class TestRun:
-    def _make_monitor_with_snapshot(self, snapshot: dict) -> ConnectionMonitor:
+    def _make_monitor_with_state(self, state: dict) -> ConnectionMonitor:
         mon = ConnectionMonitor()
-        mon.snapshot = MagicMock(return_value=snapshot)
+        mon.get_interfaces = MagicMock(return_value=state.get("interfaces", []))
+        mon.get_routing_table = MagicMock(return_value=state.get("routing", []))
+        mon.measure_latency = MagicMock(return_value=state.get("latency_ms"))
+        mon.estimate_bandwidth = MagicMock(return_value=state.get("bandwidth_mbps", 0.0))
+        mon._ip_checker = MagicMock()
+        mon._ip_checker.lookup.return_value = state.get("external_ip", {})
         return mon
 
     def test_run_pass(self):
-        mon = self._make_monitor_with_snapshot({
+        mon = self._make_monitor_with_state({
             "interfaces": [{"name": "eth0", "is_up": True, "addresses": ["10.0.0.1"]}],
             "routing": [{"destination": "0.0.0.0"}],
             "latency_ms": 10.0,
             "bandwidth_mbps": 1.5,
-            "timestamp": "2024-01-01T00:00:00+00:00",
         })
         result = mon.run()
         assert isinstance(result, AuditResult)
         assert result.status == "pass"
 
     def test_run_fail_no_active_interfaces(self):
-        mon = self._make_monitor_with_snapshot({
+        mon = self._make_monitor_with_state({
             "interfaces": [{"name": "eth0", "is_up": False, "addresses": []}],
             "routing": [{"destination": "0.0.0.0"}],
             "latency_ms": None,
             "bandwidth_mbps": 0.0,
-            "timestamp": "2024-01-01T00:00:00+00:00",
         })
         result = mon.run()
         assert result.status == "fail"
 
     def test_run_fail_no_routes(self):
-        mon = self._make_monitor_with_snapshot({
+        mon = self._make_monitor_with_state({
             "interfaces": [{"name": "eth0", "is_up": True, "addresses": ["10.0.0.1"]}],
             "routing": [],
             "latency_ms": 10.0,
             "bandwidth_mbps": 1.5,
-            "timestamp": "2024-01-01T00:00:00+00:00",
         })
         result = mon.run()
         assert result.status == "fail"
 
     def test_run_warning_no_latency(self):
-        mon = self._make_monitor_with_snapshot({
+        mon = self._make_monitor_with_state({
             "interfaces": [{"name": "eth0", "is_up": True, "addresses": ["10.0.0.1"]}],
             "routing": [{"destination": "0.0.0.0"}],
             "latency_ms": None,
             "bandwidth_mbps": 0.0,
-            "timestamp": "2024-01-01T00:00:00+00:00",
         })
         result = mon.run()
         assert result.status == "warning"
 
     def test_run_details_contain_state(self):
-        state = {
+        mon = self._make_monitor_with_state({
             "interfaces": [{"name": "eth0", "is_up": True, "addresses": ["10.0.0.1"]}],
             "routing": [{"destination": "0.0.0.0"}],
             "latency_ms": 5.0,
             "bandwidth_mbps": 10.0,
-            "timestamp": "2024-01-01T00:00:00+00:00",
-        }
-        mon = self._make_monitor_with_snapshot(state)
+        })
         result = mon.run()
-        assert result.details == state
+        assert result.details["interfaces"] == [{"name": "eth0", "is_up": True, "addresses": ["10.0.0.1"]}]
+        assert result.details["routing"] == [{"destination": "0.0.0.0"}]
+        assert result.details["latency_ms"] == 5.0
+        assert result.details["bandwidth_mbps"] == 10.0
 
 
 # ---------------------------------------------------------------------------
@@ -335,7 +338,11 @@ class TestStream:
             "bandwidth_mbps": 1.0,
             "timestamp": "2024-01-01T00:00:00+00:00",
         }
-        mon.snapshot = MagicMock(return_value=state)
+
+        async def async_snapshot():
+            return state
+
+        mon.snapshot = async_snapshot
 
         collected: list[dict] = []
         async for item in mon.stream():
@@ -359,7 +366,11 @@ class TestStream:
             "bandwidth_mbps": 0.0,
             "timestamp": "2024-01-01T00:00:00+00:00",
         }
-        mon.snapshot = MagicMock(return_value=state)
+
+        async def async_snapshot():
+            return state
+
+        mon.snapshot = async_snapshot
 
         async for item in mon.stream():
             assert item.get("event", {}).get("type") == "initial"
@@ -389,13 +400,13 @@ class TestStream:
         ]
         call_count = 0
 
-        def side_effect():
+        async def async_snapshot():
             nonlocal call_count
             idx = min(call_count, len(states) - 1)
             call_count += 1
             return states[idx]
 
-        mon.snapshot = MagicMock(side_effect=side_effect)
+        mon.snapshot = async_snapshot
 
         collected: list[dict] = []
         async for item in mon.stream():
@@ -428,13 +439,13 @@ class TestStream:
         ]
         call_count = 0
 
-        def side_effect():
+        async def async_snapshot():
             nonlocal call_count
             idx = min(call_count, len(states) - 1)
             call_count += 1
             return states[idx]
 
-        mon.snapshot = MagicMock(side_effect=side_effect)
+        mon.snapshot = async_snapshot
 
         collected: list[dict] = []
         async for item in mon.stream():

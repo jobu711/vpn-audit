@@ -1,6 +1,6 @@
 """Integration tests for REST API routes."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -246,7 +246,7 @@ async def test_status_returns_snapshot(client):
         "timestamp": "2024-01-01T00:00:00+00:00",
     }
     with patch("backend.api.routes.ConnectionMonitor") as MockCls:
-        MockCls.return_value.snapshot.return_value = snapshot_data
+        MockCls.return_value.snapshot = AsyncMock(return_value=snapshot_data)
         response = await client.get("/api/status")
 
     assert response.status_code == 200
@@ -260,7 +260,7 @@ async def test_status_returns_snapshot(client):
 async def test_status_error_returns_500(client):
     """GET /api/status should return 500 when monitor raises."""
     with patch("backend.api.routes.ConnectionMonitor") as MockCls:
-        MockCls.return_value.snapshot.side_effect = RuntimeError("psutil error")
+        MockCls.return_value.snapshot = AsyncMock(side_effect=RuntimeError("psutil error"))
         response = await client.get("/api/status")
 
     assert response.status_code == 500

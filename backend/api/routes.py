@@ -1,5 +1,6 @@
 """REST API routes for VPN audit operations."""
 
+import asyncio
 from dataclasses import asdict
 
 from fastapi import APIRouter
@@ -24,8 +25,9 @@ _ip_checker = ExternalIPChecker()
 async def audit_leaks():
     """Run DNS, WebRTC, and IPv6 leak detection."""
     try:
+        loop = asyncio.get_event_loop()
         detector = LeakDetector()
-        result = detector.run()
+        result = await loop.run_in_executor(None, detector.run)
         result_dict = asdict(result)
         _results["leaks"] = result_dict
         return result_dict
@@ -37,8 +39,9 @@ async def audit_leaks():
 async def audit_fingerprint():
     """Run traffic fingerprinting analysis."""
     try:
+        loop = asyncio.get_event_loop()
         fingerprinter = TrafficFingerprinter()
-        result = fingerprinter.run()
+        result = await loop.run_in_executor(None, fingerprinter.run)
         result_dict = asdict(result)
         _results["fingerprint"] = result_dict
         return result_dict
@@ -50,8 +53,9 @@ async def audit_fingerprint():
 async def audit_killswitch():
     """Run kill switch effectiveness test."""
     try:
+        loop = asyncio.get_event_loop()
         tester = KillSwitchTester()
-        result = tester.run()
+        result = await loop.run_in_executor(None, tester.run)
         result_dict = asdict(result)
         _results["killswitch"] = result_dict
         return result_dict
@@ -63,9 +67,15 @@ async def audit_killswitch():
 async def audit_full():
     """Run all audit modules and return combined results."""
     try:
-        leak_result = asdict(LeakDetector().run())
-        fingerprint_result = asdict(TrafficFingerprinter().run())
-        killswitch_result = asdict(KillSwitchTester().run())
+        loop = asyncio.get_event_loop()
+
+        def _run_all():
+            leak = asdict(LeakDetector().run())
+            fingerprint = asdict(TrafficFingerprinter().run())
+            killswitch = asdict(KillSwitchTester().run())
+            return leak, fingerprint, killswitch
+
+        leak_result, fingerprint_result, killswitch_result = await loop.run_in_executor(None, _run_all)
 
         _results["leaks"] = leak_result
         _results["fingerprint"] = fingerprint_result
@@ -98,7 +108,7 @@ async def status():
     """Return current connection status snapshot."""
     try:
         monitor = ConnectionMonitor()
-        return monitor.snapshot()
+        return await monitor.snapshot()
     except Exception as exc:
         return JSONResponse(status_code=500, content={"error": str(exc)})
 

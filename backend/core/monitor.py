@@ -172,13 +172,20 @@ class ConnectionMonitor:
     # Snapshot / state dict
     # ------------------------------------------------------------------
 
-    def snapshot(self) -> dict:
+    async def snapshot(self) -> dict:
         """Build a full state dict of current connection info."""
+        loop = asyncio.get_event_loop()
+        interfaces = self.get_interfaces()  # fast psutil in-memory call
+        routing, latency, bandwidth = await asyncio.gather(
+            loop.run_in_executor(None, self.get_routing_table),
+            loop.run_in_executor(None, self.measure_latency),
+            loop.run_in_executor(None, self.estimate_bandwidth),
+        )
         return {
-            "interfaces": self.get_interfaces(),
-            "routing": self.get_routing_table(),
-            "latency_ms": self.measure_latency(),
-            "bandwidth_mbps": self.estimate_bandwidth(),
+            "interfaces": interfaces,
+            "routing": routing,
+            "latency_ms": latency,
+            "bandwidth_mbps": bandwidth,
             "external_ip": self._ip_checker.lookup(),
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
@@ -189,7 +196,14 @@ class ConnectionMonitor:
 
     def run(self) -> AuditResult:
         """Take a snapshot and return an AuditResult summarising connection state."""
-        state = self.snapshot()
+        state = {
+            "interfaces": self.get_interfaces(),
+            "routing": self.get_routing_table(),
+            "latency_ms": self.measure_latency(),
+            "bandwidth_mbps": self.estimate_bandwidth(),
+            "external_ip": self._ip_checker.lookup(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
 
         active = [i for i in state["interfaces"] if i["is_up"]]
         has_routes = bool(state["routing"])
@@ -211,7 +225,7 @@ class ConnectionMonitor:
     async def stream(self) -> AsyncGenerator[dict, None]:
         """Yield state dicts at approximately *poll_interval* Hz, including change events."""
         while True:
-            state = self.snapshot()
+            state = await self.snapshot()
             event = self._detect_changes(state)
             if event:
                 state["event"] = event
